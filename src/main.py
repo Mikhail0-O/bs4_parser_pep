@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 from tqdm import tqdm
 
 from urllib.parse import urljoin
-from constants import BASE_DIR, MAIN_DOC_URL
+from constants import BASE_DIR, MAIN_DOC_URL, MAIN_DOC_PEP_URL
 from configs import configure_argument_parser, configure_logging
 from outputs import control_output
 from utils import get_response, find_tag
@@ -17,6 +17,7 @@ def whats_new(session):
     # session = requests_cache.CachedSession()
     # response = session.get(whats_new_url)
     # response.encoding = 'utf-8'
+    response = get_response(session, whats_new_url)
     if response is None:
         # Если основная страница не загрузится, программа закончит работу.
         return
@@ -112,10 +113,52 @@ def download(session):
     logging.info(f'Архив был загружен и сохранён: {archive_path}')
 
 
+def pep(session):
+    # session = requests_cache.CachedSession()
+    # response = session.get(downloads_url)
+    response = get_response(session, MAIN_DOC_PEP_URL)
+    if response is None:
+        return
+    soup = BeautifulSoup(response.text, 'lxml')
+    find_all_tags = soup.find_all('a', {'class': 'pep reference internal'})
+    print(len(find_all_tags))
+    results = []
+    pattern = r'(?P<number_of_pep>^\d+$)'
+    for tag in find_all_tags:
+        text_match = re.search(pattern, tag.text)
+        if text_match:
+            short_link = tag['href']
+            full_url = urljoin(MAIN_DOC_PEP_URL, short_link)
+            results.append(full_url)
+            # print(text_match.group('number_of_pep'), end='\n')
+    statuses = []
+    for pep_url in results:
+        response = get_response(session, pep_url)
+        if response is None:
+            return
+        soup = BeautifulSoup(response.text, 'lxml')
+        # print(soup.find_all('dt'))
+
+        find_tag = soup.find('dt', {'class': ['field-even', 'field-odd']})
+
+        while find_tag and find_tag.text != 'Status:':
+            # Ищем следующий тег dt с нужными классами
+            find_tag = find_tag.find_next_sibling('dt', {'class': ['field-even', 'field-odd']})
+            if find_tag:
+                print(pep_url, find_tag.text)
+        statuses.append([pep_url, find_tag.text])
+        # find_all_tags = soup.find_all('a', {'class': 'pep reference internal'})
+
+    print(statuses)
+    print(len(results))
+    print(len(statuses))
+
+
 MODE_TO_FUNCTION = {
     'whats-new': whats_new,
     'latest-versions': latest_versions,
     'download': download,
+    'pep': pep
 }
 
 

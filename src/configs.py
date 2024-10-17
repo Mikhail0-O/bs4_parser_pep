@@ -42,7 +42,7 @@ def configure_logging():
     # Максимальный объём одного файла — десять в шестой степени байт (10**6),
     # максимальное количество файлов с логами — 5.
     rotating_handler = RotatingFileHandler(
-        log_file, maxBytes=10 ** 6, backupCount=5
+        log_file, maxBytes=10 ** 6, backupCount=5, encoding='utf-8',
     )
     # Базовая настройка логирования basicConfig.
     logging.basicConfig(
@@ -50,6 +50,7 @@ def configure_logging():
         format=LOG_FORMAT,
         # Уровень записи логов.
         level=logging.INFO,
+        encoding='utf-8',
         # Вывод логов в терминал.
         handlers=(rotating_handler, logging.StreamHandler())
     )

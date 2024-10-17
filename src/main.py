@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 from tqdm import tqdm
 
 from urllib.parse import urljoin
-from constants import BASE_DIR, MAIN_DOC_URL, MAIN_DOC_PEP_URL
+from constants import BASE_DIR, MAIN_DOC_URL, MAIN_DOC_PEP_URL, EXPECTED_STATUS
 from configs import configure_argument_parser, configure_logging
 from outputs import control_output
 from utils import get_response, find_tag
@@ -113,45 +113,95 @@ def download(session):
     logging.info(f'Архив был загружен и сохранён: {archive_path}')
 
 
+def find_mismatched_pep(session, pattern_number_of_pep, results_card_page, statuses):
+    response = get_response(session, MAIN_DOC_PEP_URL)
+    if response is None:
+        return
+    soup = BeautifulSoup(response.text, 'lxml')
+    tags_on_the_main_page = soup.find_all('td')
+    results_for_main_page = []
+    pattern_key_for_status_pep = r'(?P<key_for_status_pep>^(\S{1,2})?$)'
+    for tag in tags_on_the_main_page:
+        text_match = re.search(pattern_key_for_status_pep, tag.text)
+        if text_match and re.search(
+            pattern_number_of_pep, tag.find_next('td').text
+        ):
+            results_for_main_page.append(text_match.group(
+                'key_for_status_pep')
+            )
+    count = 0
+    for keys, res in zip(results_for_main_page, statuses):
+        if res not in EXPECTED_STATUS[keys[1:]]:
+            logging.info(f'Несовпадающие статусы:\n'
+                         f'{results_card_page[count]}\n'
+                         f'Статус в карточке: {statuses[count]}\n'
+                         f'Ожидаемые статусы: {EXPECTED_STATUS[keys[1:]]}\n')
+        count += 1
+
+
 def pep(session):
-    # session = requests_cache.CachedSession()
-    # response = session.get(downloads_url)
+    results = [('Статус', 'Количество')]
     response = get_response(session, MAIN_DOC_PEP_URL)
     if response is None:
         return
     soup = BeautifulSoup(response.text, 'lxml')
     find_all_tags = soup.find_all('a', {'class': 'pep reference internal'})
-    print(len(find_all_tags))
-    results = []
-    pattern = r'(?P<number_of_pep>^\d+$)'
+    results_card_page = []
+    pattern_number_of_pep = r'(?P<number_of_pep>^\d+$)'
     for tag in find_all_tags:
-        text_match = re.search(pattern, tag.text)
+        text_match = re.search(pattern_number_of_pep, tag.text)
         if text_match:
             short_link = tag['href']
             full_url = urljoin(MAIN_DOC_PEP_URL, short_link)
-            results.append(full_url)
-            # print(text_match.group('number_of_pep'), end='\n')
+            results_card_page.append(full_url)
     statuses = []
-    for pep_url in results:
+    for pep_url in results_card_page:
         response = get_response(session, pep_url)
         if response is None:
             return
         soup = BeautifulSoup(response.text, 'lxml')
-        # print(soup.find_all('dt'))
 
         find_tag = soup.find('dt', {'class': ['field-even', 'field-odd']})
 
         while find_tag and find_tag.text != 'Status:':
-            # Ищем следующий тег dt с нужными классами
-            find_tag = find_tag.find_next_sibling('dt', {'class': ['field-even', 'field-odd']})
-            if find_tag:
-                print(pep_url, find_tag.text)
-        statuses.append([pep_url, find_tag.text])
-        # find_all_tags = soup.find_all('a', {'class': 'pep reference internal'})
+            find_tag = find_tag.find_next_sibling(
+                'dt', {'class': ['field-even', 'field-odd']}
+            )
+        statuses.append(find_tag.find_next_sibling('dd').text)
 
-    print(statuses)
-    print(len(results))
-    print(len(statuses))
+    unique_statuses = set(statuses)
+    count_statuses = []
+    for unique_status in unique_statuses:
+        count_statuses.append((unique_status, statuses.count(unique_status)))
+        results.append((unique_status, statuses.count(unique_status)))
+    results.append(('Total', len(statuses)))
+    find_mismatched_pep(
+        session, pattern_number_of_pep, results_card_page, statuses
+    )
+    # response = get_response(session, MAIN_DOC_PEP_URL)
+    # if response is None:
+    #     return
+    # soup = BeautifulSoup(response.text, 'lxml')
+    # tags_on_the_main_page = soup.find_all('td')
+    # results_for_main_page = []
+    # pattern_key_for_status_pep = r'(?P<key_for_status_pep>^(\S{1,2})?$)'
+    # for tag in tags_on_the_main_page:
+    #     text_match = re.search(pattern_key_for_status_pep, tag.text)
+    #     if text_match and re.search(
+    #         pattern_number_of_pep, tag.find_next('td').text
+    #     ):
+    #         results_for_main_page.append(text_match.group(
+    #             'key_for_status_pep')
+    #         )
+    # count = 0
+    # for keys, res in zip(results_for_main_page, statuses):
+    #     if res not in EXPECTED_STATUS[keys[1:]]:
+    #         logging.info(f'Несовпадающие статусы:\n'
+    #                      f'{results_card_page[count]}\n'
+    #                      f'Статус в карточке: {statuses[count]}\n'
+    #                      f'Ожидаемые статусы: {EXPECTED_STATUS[keys[1:]]}\n')
+    #     count += 1
+    return results
 
 
 MODE_TO_FUNCTION = {

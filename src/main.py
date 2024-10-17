@@ -1,30 +1,26 @@
-import re
-import requests_cache
 import logging
+import re
+from urllib.parse import urljoin
 
+import requests_cache
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 
-from urllib.parse import urljoin
-from constants import BASE_DIR, MAIN_DOC_URL, MAIN_DOC_PEP_URL, EXPECTED_STATUS
 from configs import configure_argument_parser, configure_logging
+from constants import (BASE_DIR, EXPECTED_STATUS, MAIN_DOC_PEP_URL,
+                       MAIN_DOC_URL, PATTERN_KEY_FOR_STATUS_PEP,
+                       PATTERN_NUMBER_OF_PEP)
 from outputs import control_output
-from utils import get_response, find_tag
+from utils import find_tag, get_response
 
 
 def whats_new(session):
     whats_new_url = urljoin(MAIN_DOC_URL, 'whatsnew/')
-    # session = requests_cache.CachedSession()
-    # response = session.get(whats_new_url)
-    # response.encoding = 'utf-8'
     response = get_response(session, whats_new_url)
     if response is None:
-        # Если основная страница не загрузится, программа закончит работу.
         return
     soup = BeautifulSoup(response.text, features='lxml')
-    # main_div = soup.find('section', attrs={'id': 'what-s-new-in-python'})
     main_div = find_tag(soup, 'section', attrs={'id': 'what-s-new-in-python'})
-    # div_with_ul = main_div.find('div', attrs={'class': 'toctree-wrapper'})
     div_with_ul = find_tag(main_div, 'div', attrs={'class': 'toctree-wrapper'})
     sections_by_python = div_with_ul.find_all(
         'li', attrs={'class': 'toctree-l1'}
@@ -34,30 +30,20 @@ def whats_new(session):
     for section in tqdm(sections_by_python):
         version_a_tag = section.find('a')
         version_link = urljoin(whats_new_url, version_a_tag['href'])
-        # response = session.get(version_link)
-        # response.encoding = 'utf-8'
         response = get_response(session, version_link)
         if response is None:
-            # Если страница не загрузится, программа перейдёт к следующей ссылке.
-            continue 
+            continue
         soup = BeautifulSoup(response.text, 'lxml')
-        # h1 = soup.find('h1')
         h1 = find_tag(soup, 'h1')
-        dl = soup.find('dl')
+        dl = find_tag(soup, 'dl')
         dl_text = dl.text.replace('\n', ' ')
         results.append(
             (version_link, h1.text, dl_text)
         )
-
-    # for row in results:
-    #     print(*row)
     return results
 
 
 def latest_versions(session):
-    # session = requests_cache.CachedSession()
-    # response = session.get(MAIN_DOC_URL)
-    # response.encoding = 'utf-8'
     response = get_response(session, MAIN_DOC_URL)
     if response is None:
         return
@@ -83,16 +69,11 @@ def latest_versions(session):
         results.append(
             (link, version, status)
         )
-
-    # for row in results:
-    #     print(*row)
     return results
 
 
 def download(session):
     downloads_url = urljoin(MAIN_DOC_URL, 'download.html')
-    # session = requests_cache.CachedSession()
-    # response = session.get(downloads_url)
     response = get_response(session, downloads_url)
     if response is None:
         return
@@ -113,30 +94,29 @@ def download(session):
     logging.info(f'Архив был загружен и сохранён: {archive_path}')
 
 
-def find_mismatched_pep(session, pattern_number_of_pep, results_card_page, statuses):
+def find_mismatched_pep(session, results_card_page, statuses):
     response = get_response(session, MAIN_DOC_PEP_URL)
     if response is None:
         return
     soup = BeautifulSoup(response.text, 'lxml')
     tags_on_the_main_page = soup.find_all('td')
     results_for_main_page = []
-    pattern_key_for_status_pep = r'(?P<key_for_status_pep>^(\S{1,2})?$)'
-    for tag in tags_on_the_main_page:
-        text_match = re.search(pattern_key_for_status_pep, tag.text)
+    for tag in tqdm(tags_on_the_main_page):
+        text_match = re.search(PATTERN_KEY_FOR_STATUS_PEP, tag.text)
         if text_match and re.search(
-            pattern_number_of_pep, tag.find_next('td').text
+            PATTERN_NUMBER_OF_PEP, tag.find_next('td').text
         ):
             results_for_main_page.append(text_match.group(
                 'key_for_status_pep')
             )
-    count = 0
     for keys, res in zip(results_for_main_page, statuses):
         if res not in EXPECTED_STATUS[keys[1:]]:
-            logging.info(f'Несовпадающие статусы:\n'
-                         f'{results_card_page[count]}\n'
-                         f'Статус в карточке: {statuses[count]}\n'
-                         f'Ожидаемые статусы: {EXPECTED_STATUS[keys[1:]]}\n')
-        count += 1
+            logging.info(
+                f'Несовпадающие статусы:\n'
+                f'{results_card_page[statuses.index(res)]}\n'
+                f'Статус в карточке: {statuses[statuses.index(res)]}\n'
+                f'Ожидаемые статусы: {EXPECTED_STATUS[keys[1:]]}\n'
+            )
 
 
 def pep(session):
@@ -147,27 +127,27 @@ def pep(session):
     soup = BeautifulSoup(response.text, 'lxml')
     find_all_tags = soup.find_all('a', {'class': 'pep reference internal'})
     results_card_page = []
-    pattern_number_of_pep = r'(?P<number_of_pep>^\d+$)'
     for tag in find_all_tags:
-        text_match = re.search(pattern_number_of_pep, tag.text)
+        text_match = re.search(PATTERN_NUMBER_OF_PEP, tag.text)
         if text_match:
             short_link = tag['href']
             full_url = urljoin(MAIN_DOC_PEP_URL, short_link)
             results_card_page.append(full_url)
     statuses = []
-    for pep_url in results_card_page:
+    for pep_url in tqdm(results_card_page):
         response = get_response(session, pep_url)
         if response is None:
             return
         soup = BeautifulSoup(response.text, 'lxml')
+        find_tag_dt = find_tag(
+            soup, 'dt', attrs={'class': ['field-even', 'field-odd']}
+        )
 
-        find_tag = soup.find('dt', {'class': ['field-even', 'field-odd']})
-
-        while find_tag and find_tag.text != 'Status:':
-            find_tag = find_tag.find_next_sibling(
+        while find_tag_dt and find_tag_dt.text != 'Status:':
+            find_tag_dt = find_tag_dt.find_next_sibling(
                 'dt', {'class': ['field-even', 'field-odd']}
             )
-        statuses.append(find_tag.find_next_sibling('dd').text)
+        statuses.append(find_tag_dt.find_next_sibling('dd').text)
 
     unique_statuses = set(statuses)
     count_statuses = []
@@ -175,32 +155,7 @@ def pep(session):
         count_statuses.append((unique_status, statuses.count(unique_status)))
         results.append((unique_status, statuses.count(unique_status)))
     results.append(('Total', len(statuses)))
-    find_mismatched_pep(
-        session, pattern_number_of_pep, results_card_page, statuses
-    )
-    # response = get_response(session, MAIN_DOC_PEP_URL)
-    # if response is None:
-    #     return
-    # soup = BeautifulSoup(response.text, 'lxml')
-    # tags_on_the_main_page = soup.find_all('td')
-    # results_for_main_page = []
-    # pattern_key_for_status_pep = r'(?P<key_for_status_pep>^(\S{1,2})?$)'
-    # for tag in tags_on_the_main_page:
-    #     text_match = re.search(pattern_key_for_status_pep, tag.text)
-    #     if text_match and re.search(
-    #         pattern_number_of_pep, tag.find_next('td').text
-    #     ):
-    #         results_for_main_page.append(text_match.group(
-    #             'key_for_status_pep')
-    #         )
-    # count = 0
-    # for keys, res in zip(results_for_main_page, statuses):
-    #     if res not in EXPECTED_STATUS[keys[1:]]:
-    #         logging.info(f'Несовпадающие статусы:\n'
-    #                      f'{results_card_page[count]}\n'
-    #                      f'Статус в карточке: {statuses[count]}\n'
-    #                      f'Ожидаемые статусы: {EXPECTED_STATUS[keys[1:]]}\n')
-    #     count += 1
+    find_mismatched_pep(session, results_card_page, statuses)
     return results
 
 
@@ -213,14 +168,11 @@ MODE_TO_FUNCTION = {
 
 
 def main():
-    # Запускаем функцию с конфигурацией логов.
     configure_logging()
-    # Отмечаем в логах момент запуска программы.
     logging.info('Парсер запущен!')
 
     arg_parser = configure_argument_parser(MODE_TO_FUNCTION.keys())
     args = arg_parser.parse_args()
-    # Логируем переданные аргументы командной строки.
     logging.info(f'Аргументы командной строки: {args}')
 
     session = requests_cache.CachedSession()
@@ -232,7 +184,6 @@ def main():
 
     if results is not None:
         control_output(results, args)
-    # Логируем завершение работы парсера.
     logging.info('Парсер завершил работу.')
 
 

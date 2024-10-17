@@ -14,3 +14,5 @@ EXPECTED_STATUS = {
     'W': ('Withdrawn',),
     '': ('Draft', 'Active'),
 }
+PATTERN_NUMBER_OF_PEP = r'(?P<number_of_pep>^\d+$)'
+PATTERN_KEY_FOR_STATUS_PEP = r'(?P<key_for_status_pep>^(\S{1,2})?$)'

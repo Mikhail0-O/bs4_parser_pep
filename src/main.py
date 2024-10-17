@@ -48,7 +48,8 @@ def latest_versions(session):
     if response is None:
         return
     soup = BeautifulSoup(response.text, 'lxml')
-    sidebar = soup.find('div', {'class': 'sphinxsidebarwrapper'})
+
+    sidebar = find_tag(soup, 'div', attrs={'class': 'sphinxsidebarwrapper'})
     ul_tags = sidebar.find_all('ul')
     for ul in ul_tags:
         if 'All versions' in ul.text:
@@ -78,9 +79,12 @@ def download(session):
     if response is None:
         return
     soup = BeautifulSoup(response.text, features='lxml')
-    main_tag = soup.find('div', {'role': 'main'})
-    table_tag = main_tag.find('table', {'class': 'docutils'})
-    pdf_a4_tag = table_tag.find('a', {'href': re.compile(r'.+pdf-a4\.zip$')})
+    main_tag = find_tag(soup, 'div', attrs={'role': 'main'})
+    table_tag = find_tag(main_tag, 'table', {'class': 'docutils'})
+    pdf_a4_tag = find_tag(
+        table_tag, 'a', attrs={'href': re.compile(r'.+pdf-a4\.zip$')}
+    )
+
     pdf_a4_link = pdf_a4_tag['href']
     archive_url = urljoin(downloads_url, pdf_a4_link)
     filename = archive_url.split('/')[-1]

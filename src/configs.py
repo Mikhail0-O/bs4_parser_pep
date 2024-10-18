@@ -9,7 +9,15 @@ LOG_FORMAT = '"%(asctime)s - [%(levelname)s] - %(message)s"'
 DT_FORMAT = '%d.%m.%Y %H:%M:%S'
 
 
-def configure_argument_parser(available_modes):
+def configure_argument_parser(
+        available_modes: tuple[str]) -> argparse.ArgumentParser:
+    """
+    Конфигурирует и возвращает парсер аргументов командной строки.
+
+    :param available_modes: Список доступных режимов работы парсера.
+    :return: Объект argparse.ArgumentParser,
+    настроенный для парсинга аргументов командной строки.
+    """
     parser = argparse.ArgumentParser(description='Парсер документации Python')
     parser.add_argument(
         'mode',

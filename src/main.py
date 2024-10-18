@@ -94,49 +94,57 @@ def download(session):
     response = session.get(archive_url)
     with open(archive_path, 'wb') as file:
         file.write(response.content)
-    print(filename)
     logging.info(f'Архив был загружен и сохранён: {archive_path}')
 
 
-def find_mismatched_pep(session, results_card_page, statuses):
-    response = get_response(session, MAIN_DOC_PEP_URL)
-    if response is None:
-        return
-    soup = BeautifulSoup(response.text, 'lxml')
-    tags_on_the_main_page = soup.find_all('td')
-    results_for_main_page = []
-    for tag in tqdm(tags_on_the_main_page):
-        text_match = re.search(PATTERN_KEY_FOR_STATUS_PEP, tag.text)
-        if text_match and re.search(
-            PATTERN_NUMBER_OF_PEP, tag.find_next('td').text
-        ):
-            results_for_main_page.append(text_match.group(
-                'key_for_status_pep')
-            )
-    for keys, res in zip(results_for_main_page, statuses):
-        if res not in EXPECTED_STATUS[keys[1:]]:
-            logging.info(
-                f'Несовпадающие статусы:\n'
-                f'{results_card_page[statuses.index(res)]}\n'
-                f'Статус в карточке: {statuses[statuses.index(res)]}\n'
-                f'Ожидаемые статусы: {EXPECTED_STATUS[keys[1:]]}\n'
-            )
+# def find_mismatched_pep(session, results_card_page, statuses):
+#     response = get_response(session, MAIN_DOC_PEP_URL)
+#     if response is None:
+#         return
+#     soup = BeautifulSoup(response.text, 'lxml')
+#     tags_on_the_main_page = soup.find_all('td')
+#     results_for_main_page = []
+#     for tag in tqdm(tags_on_the_main_page):
+#         text_match = re.search(PATTERN_KEY_FOR_STATUS_PEP, tag.text)
+#         if text_match and re.search(
+#             PATTERN_NUMBER_OF_PEP, tag.find_next('td').text
+#         ):
+#             results_for_main_page.append(text_match.group(
+#                 'key_for_status_pep')
+#             )
+#     for keys, res in zip(results_for_main_page, statuses):
+#         if res not in EXPECTED_STATUS[keys[1:]]:
+#             logging.info(
+#                 f'Несовпадающие статусы:\n'
+#                 f'{results_card_page[statuses.index(res)]}\n'
+#                 f'Статус в карточке: {statuses[statuses.index(res)]}\n'
+#                 f'Ожидаемые статусы: {EXPECTED_STATUS[keys[1:]]}\n'
+#             )
 
 
 def pep(session):
+    dict_results = {}
     results = [('Статус', 'Количество')]
     response = get_response(session, MAIN_DOC_PEP_URL)
     if response is None:
         return
     soup = BeautifulSoup(response.text, 'lxml')
-    find_all_tags = soup.find_all('a', {'class': 'pep reference internal'})
+    # find_all_tags = soup.find_all('a', {'class': 'pep reference internal'})
+    find_all_tags = soup.find_all('td')
+    PATTERN_KEY = r'^(?P<key_for_status_pep>[A-Z]{1,2})?$'
+    key_of_statuses = []
+    # key_of_statuses = soup.find_all('td', string=re.compile(PATTERN_KEY_FOR_STATUS_PEP))
+    # key_of_statuses = [i for i in key_of_statuses if i.find_next('td', string=re.compile(PATTERN_NUMBER_OF_PEP))]
     results_card_page = []
     for tag in find_all_tags:
         text_match = re.search(PATTERN_NUMBER_OF_PEP, tag.text)
         if text_match:
-            short_link = tag['href']
+            # short_link = tag['href']
+            short_link = tag.find('a')['href']
             full_url = urljoin(MAIN_DOC_PEP_URL, short_link)
+            key_of_statuses.append(tag.find_previous_sibling('td').text)
             results_card_page.append(full_url)
+    print(key_of_statuses, len(key_of_statuses))
     statuses = []
     for pep_url in tqdm(results_card_page):
         response = get_response(session, pep_url)
@@ -159,7 +167,7 @@ def pep(session):
         count_statuses.append((unique_status, statuses.count(unique_status)))
         results.append((unique_status, statuses.count(unique_status)))
     results.append(('Total', len(statuses)))
-    find_mismatched_pep(session, results_card_page, statuses)
+    # find_mismatched_pep(session, results_card_page, statuses)
     return results
 
 

@@ -58,7 +58,8 @@ def latest_versions(session):
             a_tags = ul.find_all('a')
             break
     else:
-        raise ListOfPythonVersionException('Не найден список c версиями Python')
+        raise ListOfPythonVersionException(
+            'Не найден список c версиями Python')
 
     results = [('Ссылка на документацию', 'Версия', 'Статус')]
     pattern = r'Python (?P<version>\d\.\d+) \((?P<status>.*)\)'

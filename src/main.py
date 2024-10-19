@@ -108,41 +108,33 @@ def pep(session):
         return
     soup = BeautifulSoup(response.text, 'lxml')
     find_all_tags = soup.find_all('td')
-    key_of_statuses = []
-    results_card_page = []
-    for tag in find_all_tags:
+    for tag in tqdm(find_all_tags):
         text_match = re.search(PATTERN_NUMBER_OF_PEP, tag.text)
         if text_match:
             short_link = tag.find('a')['href']
             full_url = urljoin(MAIN_DOC_PEP_URL, short_link)
-            key_of_statuses.append(tag.find_previous_sibling('td').text)
-            results_card_page.append(full_url)
-
-    statuses = []
-    for pep_url in tqdm(results_card_page):
-        response = get_response(session, pep_url)
-        if response is None:
-            return
-        soup = BeautifulSoup(response.text, 'lxml')
-        find_tag_dt = find_tag(
-            soup, 'dt', attrs={'class': ['field-even', 'field-odd']}
-        )
-
-        while find_tag_dt and find_tag_dt.text != 'Status:':
-            find_tag_dt = find_tag_dt.find_next_sibling(
-                'dt', {'class': ['field-even', 'field-odd']}
+            status_key = tag.find_previous_sibling('td').text.strip()
+            pep_response = get_response(session, full_url)
+            if pep_response is None:
+                continue
+            pep_soup = BeautifulSoup(pep_response.text, 'lxml')
+            find_tag_dt = find_tag(
+                pep_soup, 'dt', attrs={'class': ['field-even', 'field-odd']}
             )
-
-        dict_results[find_tag_dt.find_next_sibling('dd').text] += 1
-        statuses.append(find_tag_dt.find_next_sibling('dd').text)
-    for keys, res in zip(key_of_statuses, statuses):
-        if res not in EXPECTED_STATUS[keys[1:]]:
-            logging.info(
-                f'Несовпадающие статусы:\n'
-                f'{results_card_page[statuses.index(res)]}\n'
-                f'Статус в карточке: {statuses[statuses.index(res)]}\n'
-                f'Ожидаемые статусы: {EXPECTED_STATUS[keys[1:]]}\n'
-            )
+            while find_tag_dt and find_tag_dt.text != 'Status:':
+                find_tag_dt = find_tag_dt.find_next_sibling(
+                    'dt', {'class': ['field-even', 'field-odd']}
+                )
+            status_in_card = find_tag_dt.find_next_sibling('dd').text
+            dict_results[status_in_card] += 1
+            expected_status = EXPECTED_STATUS[status_key[1:]]
+            if status_in_card not in expected_status:
+                logging.info(
+                    f'Несовпадающие статусы:\n'
+                    f'{full_url}\n'
+                    f'Статус в карточке: {status_in_card}\n'
+                    f'Ожидаемые статусы: {expected_status}\n'
+                )
     results.extend(dict_results.items())
     results.append(('Total', sum(dict_results.values())))
     return results
